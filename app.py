@@ -1,62 +1,84 @@
-# APP VERSION 8: Visualizations (Bar Chart + Pie Chart) from the same DataFrame
-# This whole cell is a complete Streamlit app.
-# Copy EVERYTHING in this cell into a file named: app.py
-# Then run in your terminal:
-#     streamlit run app.py
-#
-# Tip: Streamlit reruns the script top-to-bottom whenever you change a widget.
-
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
+import joblib
+import plotly.express as px
 
-st.set_page_config(page_title="Charts", layout="wide")
-st.title("Charts 📈")
+st.set_page_config(page_title="Mood Score Predictor", layout="wide")
 
-# --- Dataset ---
-np.random.seed(7)
-months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"]
-stores = ["North", "South", "East", "West"]
-fruits = ["Apple", "Banana", "Orange", "Mango"]
+@st.cache_resource
+def load_model():
+    return joblib.load("best_model.pkl")
 
-rows = []
-for m in months:
-    for s in stores:
-        for f in fruits:
-            rows.append({"month": m, "store": s, "fruit": f, "sales": int(np.random.randint(10, 101))})
-df = pd.DataFrame(rows)
+model = load_model()
 
-# --- Filters ---
-month_choice = st.selectbox("Month:", ["All"] + months)
-store_choices = st.multiselect("Stores:", stores, default=stores)
+st.title("🧠 Lifestyle-Based Mood Score Prediction")
+st.markdown("""
+This application predicts **Mood Score** based on daily lifestyle habits.
+It is designed for **ML competitions** with a clean UI, insights, and explainability.
+""")
 
-filtered = df.copy()
-if month_choice != "All":
-    filtered = filtered[filtered["month"] == month_choice]
-filtered = filtered[filtered["store"].isin(store_choices)]
+with st.sidebar:
+    st.header("🔧 Input Your Daily Habits")
+    sleep_hours = st.slider("Sleep Hours", 4.0, 10.0, 7.0)
+    steps = st.number_input("Steps Walked", 0, 30000, 8000)
+    calories = st.number_input("Calories Burned", 800, 5000, 2200)
+    water = st.number_input("Water Intake (ml)", 500, 5000, 2500)
+    study = st.slider("Study Hours", 0.0, 10.0, 4.0)
+    wake_time = st.slider("Wake Up Hour", 4, 12, 7)
+    day = st.slider("Day", 1, 31, 15)
+    month = st.slider("Month", 1, 12, 6)
+    weekday = st.slider("Weekday (0=Mon)", 0, 6, 2)
 
-# --- Make a summary table: sales per fruit ---
-summary = (
-    filtered.groupby("fruit", as_index=False)["sales"]
-    .sum()
-    .sort_values("sales", ascending=False)
-)
+def prepare_input():
+    sleep_cat_low = 1 if sleep_hours < 6 else 0
+    sleep_cat_opt = 1 if 6 <= sleep_hours <= 8 else 0
 
-st.subheader("Sales by fruit (summary)")
-st.dataframe(summary, use_container_width=True)
+    activity = steps + calories
+    hydration = water / 1000
+    study_effort = study * 10
+    balance = sleep_hours*0.3 + hydration*0.2 + study*0.3 + activity*0.00005
 
-# --- BAR CHART ---
-st.subheader("Bar chart: total sales per fruit")
-# Streamlit can directly chart a DataFrame
-bar_df = summary.set_index("fruit")  # index becomes x-axis labels
-st.bar_chart(bar_df)  # y-axis is sales
+    data = {
+        "Sleep_Hours": sleep_hours,
+        "Steps": steps,
+        "Calories_Burned": calories,
+        "Water_Intake_ml": water,
+        "Study_Hours": study,
+        "Wake_Up_Time": wake_time,
+        "Day": day,
+        "Month": month,
+        "Weekday": weekday,
+        "Activity_Score": activity,
+        "Hydration_Liters": hydration,
+        "Study_Effort": study_effort,
+        "Lifestyle_Balance_Index": balance,
+        "Sleep_Category_Low Sleep": sleep_cat_low,
+        "Sleep_Category_Optimal Sleep": sleep_cat_opt
+    }
+    return pd.DataFrame([data])
 
-# --- PIE CHART ---
-st.subheader("Pie chart: sales share per fruit")
+input_df = prepare_input()
 
-fig, ax = plt.subplots()
-ax.pie(summary["sales"], labels=summary["fruit"], autopct="%1.1f%%", startangle=90)
-ax.axis("equal")  # makes the pie a circle
-st.pyplot(fig)
+if st.button("🎯 Predict Mood Score"):
+    prediction = model.predict(input_df)[0]
+    st.success(f"### Predicted Mood Score: **{prediction} / 10**")
+
+    fig = px.bar(
+        x=["Sleep","Activity","Hydration","Study","Balance"],
+        y=[sleep_hours, steps/1000, water/1000, study, input_df["Lifestyle_Balance_Index"][0]],
+        title="Lifestyle Contribution Snapshot"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+st.markdown("---")
+st.subheader("📊 How This Model Works")
+st.markdown("""
+- Trained on lifestyle & behavioral data
+- Uses engineered features like **Lifestyle Balance Index**
+- Best model selected via cross-validation
+- Designed for **accuracy + interpretability**
+""")
+
+st.caption("© Competition-Ready ML Project | Streamlit Deployment")
